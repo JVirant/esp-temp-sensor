@@ -1,15 +1,19 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
 #include <DHTesp.h>
 
-const char *ssid = "";
-const char *password = "";
+const char *ssid = "🌡️";
+const char *password = "sensors-esp8266";
+
+const char* url = "http://192.168.1.88/esp8266/sensor";
+const char* sensorName = "exterior";
 
 DHTesp dht;
 
 void setup()
 {
-	dht.setup(D4, DHTesp::DHT11); // Connect DHT sensor to GPIO 17
+	dht.setup(D4, DHTesp::DHT22); // Connect DHT sensor to GPIO 17
 
 	Serial.begin(115200); // Start the Serial communication to send messages to the computer
 	delay(10);
@@ -54,6 +58,16 @@ void loop()
 	Serial.print(dht.computeHeatIndex(temperature, humidity, false), 1);
 	Serial.print("\t\t");
 	Serial.println(dht.computeHeatIndex(dht.toFahrenheit(temperature), humidity, true), 1);
+
+	WiFiClient client;
+	HTTPClient http;
+	if (http.begin(client, url))
+	{
+		http.addHeader("Content-Type", "application/json");
+		http.POST(String("{\"name\":\"") + sensorName + "\", \"temperature\": " + temperature + ", \"humidity\": " + humidity + "}");
+		http.end();
+		Serial.println("http sent");
+	}
 
 	ESP.deepSleep(30 * 60 * 1000 * 1000);
 }
