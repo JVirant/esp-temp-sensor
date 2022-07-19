@@ -67,7 +67,64 @@ async function main() {
 		ctxt.body = rows;
 	});
 
+	app.use(async (ctxt, next) => {
+		if (ctxt.path !== "/" || ctxt.method !== "GET")
+			return next();
+		ctxt.type = "text/html";
+		ctxt.body = indexHtml;
+	});
+
 	app.listen(parseInt(process.env.HTTP_PORT ?? "8080"));
 }
 
 main().catch(err => console.error(err));
+
+const indexHtml = `<!DOCTYPE html>
+<html lang="en">
+<head><title>Temp</title></head>
+<body>
+<canvas id="temperature"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/luxon@3.0.1/build/global/luxon.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.8.0/dist/chart.min.js"></script>
+<script>${String(htmlMainJS)};htmlMainJS();</script>
+</body>
+</html>`;
+
+interface Record {
+	name: string;
+	temperature: number;
+	humidity: number;
+	created_at: string;
+}
+
+declare const luxon: any;
+declare const Chart: any;
+async function htmlMainJS() {
+	const exteriorRecords: Record[] = [];
+	const refresh = async () => {
+		const rows: Record[] = await fetch(`records`).then(r => r.json());
+		rows.sort((a, b) => a.created_at.localeCompare(b.created_at));
+		exteriorRecords.length = 0;
+		exteriorRecords.push(...rows.filter(r => r.name === "exterior"));
+	};
+
+	await refresh();
+
+	const ctx = document.getElementsByTagName("canvas").item(0)?.getContext("2d");
+	if (!ctx)
+		throw new Error("canvas not found");
+	new Chart(ctx, {
+		type: "line",
+		data: {
+			labels: exteriorRecords.map(r => luxon.DateTime.fromFormat(r.created_at, "yyyy-LL-dd HH:mm:ss", { zone: "utc" }).setZone("Europe/Paris").toLocaleString(luxon.DateTime.DATETIME_SHORT)),
+			datasets: [{
+				label: "Exterior",
+				data: exteriorRecords.map(r => r.temperature),
+				fillColor: "rgba(255, 99, 132, 0.2)",
+				strokeColor: "rgba(0, 0, 0, 1)",
+			}],
+		}
+	});
+
+}
