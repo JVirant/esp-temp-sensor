@@ -7,7 +7,9 @@ const char *ssid = "🌡️";
 const char *password = "sensors-esp8266";
 
 const char* url = "http://192.168.1.88/esp8266/sensor";
-const char* sensorName = "exterior";
+//const char* sensorName = "exterior";
+const char* sensorName = "cave";
+const int waitMinutes = 10; // minimum 2 minutes
 
 DHTesp dht;
 
@@ -22,7 +24,7 @@ void setup()
 	WiFi.begin(ssid, password); // Connect to the network
 	Serial.print("Connecting to ");
 	Serial.print(ssid);
-	Serial.println(" ...");
+	Serial.println("...");
 
 	int i = 0;
 	while (WiFi.status() != WL_CONNECTED)
@@ -42,10 +44,17 @@ void setup()
 
 void loop()
 {
-	delay(dht.getMinimumSamplingPeriod());
+	float humidity = 0;
+	float temperature = 0;
 
-	float humidity = dht.getHumidity();
-	float temperature = dht.getTemperature();
+	int const count = 3;
+	for (int i = 0; i < count; ++i) {
+		delay(dht.getMinimumSamplingPeriod());
+		humidity += dht.getHumidity();
+		temperature += dht.getTemperature();
+	}
+	humidity /= count;
+	temperature /= count;
 
 	Serial.print(dht.getStatusString());
 	Serial.print("\t");
@@ -69,5 +78,5 @@ void loop()
 		Serial.println("http sent");
 	}
 
-	ESP.deepSleep(30 * 60 * 1000 * 1000);
+	ESP.deepSleep((waitMinutes - 1) * 60 * 1000 * 1000);
 }

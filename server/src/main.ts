@@ -74,6 +74,43 @@ async function main() {
 		ctxt.body = indexHtml;
 	});
 
+	// test generate false values
+	app.use(async (ctxt, next) => {
+		if (ctxt.path !== "/generate" || ctxt.method !== "GET")
+			return next();
+		const db = await open({
+			driver: Database,
+			filename: process.env.DB_PATH || "db.sqlite",
+		});
+		await db.run(`delete from records`);
+		let temp = 150 + Math.random() * 200;
+		let humidity = 300 + Math.random() * 200;
+		for (let i = 0; i < 100; ++i) {
+			temp += Math.random() * 20 - 10;
+			humidity += Math.random() * 20 - 10;
+			await db.run(
+				`insert into records (created_at, name, temperature, humidity) values (datetime('now', '-${i*10} minutes'), ?, ?, ?)`,
+				"exterior",
+				Math.round(temp) / 10,
+				Math.round(humidity) / 10,
+			);
+		}
+		temp = 150 + Math.random() * 200;
+		humidity = 300 + Math.random() * 200;
+		for (let i = 0; i < 100; ++i) {
+			temp += Math.random() * 20 - 10;
+			humidity += Math.random() * 20 - 10;
+			await db.run(
+				`insert into records (created_at, name, temperature, humidity) values (datetime('now', '-${i*10} minutes'), ?, ?, ?)`,
+				"cave",
+				Math.round(temp) / 10,
+				Math.round(humidity) / 10,
+			);
+		}
+		await db.close();
+		ctxt.body = "ok";
+	});
+
 	app.listen(parseInt(process.env.HTTP_PORT ?? "8080"));
 }
 
@@ -87,11 +124,12 @@ const indexHtml = `<!DOCTYPE html>
 
 <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.1/build/global/luxon.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.8.0/dist/chart.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script>${String(htmlMainJS)};htmlMainJS();</script>
 </body>
 </html>`;
 
-interface Record {
+interface Row {
 	name: string;
 	temperature: number;
 	humidity: number;
@@ -101,30 +139,59 @@ interface Record {
 declare const luxon: any;
 declare const Chart: any;
 async function htmlMainJS() {
-	const exteriorRecords: Record[] = [];
+	const colors: Record<string, string | undefined> = {
+		"exterior": "rgba(170, 0, 0, 255)",
+		"cave": "rgba(0, 170, 0, 255)",
+	};
+
+	const records: { [name: string]: Row[] } = {};
+	const datasets: unknown[] = [];
 	const refresh = async () => {
-		const rows: Record[] = await fetch(`records`).then(r => r.json());
+		const rows: Row[] = await fetch(`records`).then(r => r.json());
 		rows.sort((a, b) => a.created_at.localeCompare(b.created_at));
-		exteriorRecords.length = 0;
-		exteriorRecords.push(...rows.filter(r => r.name === "exterior"));
+		const sensors = new Set(rows.map(r => r.name));
+		Object.assign(records, Object.fromEntries([...sensors.values()].map(name => [name, rows.filter(r => r.name === name)])));
+		datasets.length = 0;
+		datasets.push(...Object.entries(records).map(([label, records]) => ({
+			label,
+			data: records.filter(r => r.name === label).map(r => ({ x: luxon.DateTime.fromFormat(r.created_at, "yyyy-LL-dd HH:mm:ss").toJSDate(), y: r.temperature })),
+			borderColor: colors[label] || "rgba(0, 0, 0, 255)",
+			fillColor: "rgba(255, 255, 255, 128)"
+		})));
 	};
 
 	await refresh();
+	console.log(datasets);
 
 	const ctx = document.getElementsByTagName("canvas").item(0)?.getContext("2d");
 	if (!ctx)
 		throw new Error("canvas not found");
 	new Chart(ctx, {
 		type: "line",
+		options: {
+			scales: {
+				x: {
+					type: "time",
+					time: {
+						unit: "hour",
+						displayFormats: { hour: "yyyy-LL-dd HH:mm:ss" },
+						tooltipFormat: "yyyy-LL-dd HH:mm:ss",
+					},
+					title: {
+						display: true,
+						text: "Date",
+					},
+				},
+				y: {
+					title: {
+						display: true,
+						text: "Temp °C",
+					}
+				}
+			},
+		},
 		data: {
-			labels: exteriorRecords.map(r => luxon.DateTime.fromFormat(r.created_at, "yyyy-LL-dd HH:mm:ss", { zone: "utc" }).setZone("Europe/Paris").toLocaleString(luxon.DateTime.DATETIME_SHORT)),
-			datasets: [{
-				label: "Exterior",
-				data: exteriorRecords.map(r => r.temperature),
-				fillColor: "rgba(255, 99, 132, 0.2)",
-				strokeColor: "rgba(0, 0, 0, 1)",
-			}],
+			datasets,
 		}
 	});
-
 }
