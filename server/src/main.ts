@@ -156,7 +156,9 @@ async function htmlMainJS() {
 			label,
 			data: records.filter(r => r.name === label).map(r => ({ x: luxon.DateTime.fromFormat(r.created_at, "yyyy-LL-dd HH:mm:ss").toJSDate(), y: r.temperature })),
 			borderColor: colors[label] || "rgba(0, 0, 0, 255)",
-			fillColor: "rgba(255, 255, 255, 128)"
+			fill: false,
+			tension: 0.4,
+			radius: 0,
 		})));
 	};
 
